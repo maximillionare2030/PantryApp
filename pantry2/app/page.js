@@ -30,6 +30,7 @@ const style = {
   flexDirection: 'column',
   gap: 3,
   justifyContent: 'center',
+  alignItems: 'center',
 };
 
 const uploadImage = async (imageFile) => {
@@ -79,50 +80,65 @@ export default function Home() {
   }, []);
 
   const addItem = async (item, quantity, image) => {
-    const docRef = doc(collection(firestore, 'inventory'), item);
-    const docSnap = await getDoc(docRef);
-    const currentTime = Timestamp.now();
-    let imageURL = '';
+    if (typeof window !== 'undefined') {
+      const docRef = doc(collection(firestore, 'inventory'), item);
+      const docSnap = await getDoc(docRef);
+      const currentTime = Timestamp.now();
+      let imageURL = '';
 
-    if (image) {
-      imageURL = await uploadImage(image);
-    }
+      if (image) {
+        imageURL = await uploadImage(image);
+      }
 
-    const newEntry = {
-      quantity,
-      imageURL,
-      timestamp: currentTime,
-    };
-
-    if (docSnap.exists()) {
-      const existingData = docSnap.data();
-      const entries = existingData.entries ? [...existingData.entries, newEntry] : [newEntry];
-      await setDoc(docRef, {
-        quantity: existingData.quantity + quantity,
-        entries,
-      }, { merge: true });
-    } else {
-      await setDoc(docRef, {
+      const newEntry = {
         quantity,
-        entries: [newEntry],
-      });
+        imageURL,
+        timestamp: currentTime,
+      };
+
+      if (docSnap.exists()) {
+        const existingData = docSnap.data();
+        const entries = existingData.entries ? [...existingData.entries, newEntry] : [newEntry];
+        await setDoc(docRef, {
+          quantity: existingData.quantity + quantity,
+          entries,
+        }, { merge: true });
+      } else {
+        await setDoc(docRef, {
+          quantity,
+          entries: [newEntry],
+        });
+      }
+      await updateInventory();
     }
-    await updateInventory();
   };
 
   const removeItem = async (item) => {
-    const docRef = doc(collection(firestore, 'inventory'), item);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      const { quantity, entries = [] } = docSnap.data(); // Default entries to an empty array
-      if (quantity === 1) {
-        await deleteDoc(docRef);
-      } else {
-        const updatedEntries = entries.length > 0 ? entries.slice(0, -1) : []; // Slice if entries exist
-        await setDoc(docRef, { quantity: quantity - 1, entries: updatedEntries }, { merge: true });
+    if (typeof window !== 'undefined') {
+      const docRef = doc(collection(firestore, 'inventory'), item);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const { quantity, entries = [] } = docSnap.data(); // Default entries to an empty array
+        if (quantity === 1) {
+          await deleteDoc(docRef);
+        } else if (entries.length > 0) {
+          let updatedEntries = [...entries];
+          // Find the first entry with a quantity greater than 1 and decrement its quantity
+          for (let i = 0; i < updatedEntries.length; i++) {
+            if (updatedEntries[i].quantity > 1) {
+              updatedEntries[i].quantity -= 1;
+              break;
+            } else if (updatedEntries[i].quantity === 1) {
+              // If the entry has a quantity of 1, remove it
+              updatedEntries.splice(i, 1);
+              break;
+            }
+          }
+          await setDoc(docRef, { quantity: quantity - 1, entries: updatedEntries }, { merge: true });
+        }
       }
+      await updateInventory();
     }
-    await updateInventory();
   };
 
   const handleOpen = () => setOpen(true);
@@ -161,7 +177,7 @@ export default function Home() {
             { role: 'user', content: chatInput }
           ],
         },
-        { headers: { Authorization: `Bearer your_openai_api_key` } }
+        { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } }
       );
 
       const { choices } = response.data;
@@ -179,14 +195,21 @@ export default function Home() {
   };
 
   return (
-    <Box width="100vw" height="100vh" display="flex" alignItems="center" gap={2}>
-      <Modal
-        open={open}
-        onClose={handleClose}
-        aria-labelledby="modal-modal-title"
+    <Box
+      width="100vw"
+      height="100vh"
+      display="flex"
+      alignItems="center"
+      justifyContent="center"
+      gap={2}
+    >
+      <Modal 
+        open={open} 
+        onClose={handleClose} 
+        aria-labelledby="modal-modal-title" 
         aria-describedby="modal-modal-description"
       >
-        <Box sx={style} display="flex">
+        <Box sx={style}>
           <Typography id="modal-modal-title" variant="h6" component="h2" color="black">
             Add Item
           </Typography>
@@ -237,7 +260,7 @@ export default function Home() {
           </Stack>
         </Box>
       </Modal>
-      <Box display="flex" alignItems="center" height="100vh" flexDirection={"column"} paddingLeft={"10px"} marginTop="10px">
+      <Box display="flex" alignItems="center" flexDirection={"column"} paddingLeft={"10px"} justifyContent="center">
         <Box display="flex" flexDirection="column" alignItems="center" gap={2} backgroundColor="white" marginBottom={"10px"}>
           <TextField
             id="search-bar"
@@ -293,23 +316,30 @@ export default function Home() {
         </Box>
       </Box>
 
-      <Box width="30%" bgcolor={"white"} height="80%" marginLeft="40px" marginRight="40px" border="5px solid black" overflow="auto"
-      sx={{
-        backgroundImage: 'url(/emptyshelf.jpg)', // Replace with your image URL
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
-      }} >
+      <Box 
+        width="30%" 
+        height="80%" 
+        marginLeft="40px" 
+        marginRight="40px" 
+        border="5px solid black"
+        sx={{
+          backgroundImage: 'url(/emptyshelf.jpg)', // Replace with your image URL
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+          overflowX: 'auto'
+        }}
+      >
         <Box display="flex" justifyContent="center" alignContent="center" borderBottom="5px solid black" bgcolor="white">
           <Typography variant="h2" marginBottom={2} color="black">
             Pantry Visual
           </Typography>
         </Box>
         <Stack spacing={2} padding={2} overflow="auto">
-          {(searchResults.length > 0 ? searchResults : inventory).map(({ name, quantity, entries }) => (
+          {(searchResults.length > 0 ? searchResults : inventory).map(({ name, entries }) => (
             <Box key={name} marginBottom={2}>
               <Tooltip
-                title={entries ? `Total Quantity: ${quantity}` : 'No entries'}
+                title={`Total Quantity: ${entries.reduce((sum, entry) => sum + entry.quantity, 0)}`}
                 arrow
                 placement="top"
               >
@@ -317,37 +347,38 @@ export default function Home() {
                   {name.charAt(0).toUpperCase() + name.slice(1)}
                 </Typography>
               </Tooltip>
-              {/* Map quantity to reflect the number of items */}
               <Grid container spacing={1} sx={{ marginTop: 2 }}>
-                {[...Array(quantity)].map((_, idx) => (
-                  <Grid key={idx} item>
-                    <Tooltip
-                      title={`Entered: ${entries[0]?.timestamp.toDate().toLocaleString()}` || 'Timestamp unavailable'}
-                      arrow
-                      placement="top"
-                    >
-                      <Box
-                        width={50}
-                        height={50}
-                        bgcolor="#e0e0e0"
-                        border="1px solid #333"
-                        display="flex"
-                        justifyContent="center"
-                        alignItems="center"
+                {entries.flatMap((entry) =>
+                  Array(entry.quantity).fill().map((_, idx) => (
+                    <Grid key={`${entry.timestamp.toMillis()}-${idx}`} item>
+                      <Tooltip
+                        title={`Entered: ${entry.timestamp.toDate().toLocaleString()}`}
+                        arrow
+                        placement="top"
                       >
-                        <Typography variant="body2" color="#333">
-                          {name.charAt(0).toUpperCase()}
-                        </Typography>
-                      </Box>
-                    </Tooltip>
-                  </Grid>
-                ))}
+                        <Box
+                          width={50}
+                          height={50}
+                          bgcolor="#e0e0e0"
+                          border="1px solid #333"
+                          display="flex"
+                          justifyContent="center"
+                          alignItems="center"
+                        >
+                          <Typography variant="body2" color="#333">
+                            {name.charAt(0).toUpperCase()}
+                          </Typography>
+                        </Box>
+                      </Tooltip>
+                    </Grid>
+                  ))
+                )}
               </Grid>
             </Box>
           ))}
         </Stack>
       </Box>
-      <Box display="flex" alignItems="center" height="100vh" flexDirection={"column"} paddingLeft={"10px"} marginTop="10px">
+      <Box display="flex" alignItems="center" flexDirection={"column"} justifyContent="center">
         <Typography variant="h4" marginBottom={2}>
           Chat with PantryAI
         </Typography>
@@ -361,7 +392,8 @@ export default function Home() {
           borderRadius="8px"
           bgcolor="white"
           overflow="auto"
-          height="70%"
+          minHeight={"500px"}
+          maxHeight={"500px"}
         >
           {chatMessages.map((msg, index) => (
             <Typography
@@ -382,7 +414,7 @@ export default function Home() {
           <Box bgcolor={'white'} display="flex" border="3px solid grey">
             <TextField
               variant="outlined"
-              width="75%"
+              width="100%"
               label="Type your message..."
               value={chatInput}
               onChange={handleChatInputChange}
